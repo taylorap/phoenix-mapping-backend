@@ -18,6 +18,11 @@ the system:
 
 This replaces manual inspection of keyfiles and JavaScript mappings with a quick, standardized explanation.
 
+### 1.1 Getting Started
+
+- Local setup guide: `docs/LOCAL_SETUP_README.md`
+- How to use (UI + API): `docs/HOW_TO_USE_README.md`
+
 ---
 
 ## 2. High‑Level Architecture
@@ -57,7 +62,6 @@ The system has two main parts:
 
 Path on Taylor’s machine: /Users/taylorap/phoenix-mapping-backend/phoenix-mapping-backend
 
-
 Key files:
 
 - `db.js` – Postgres connection and query helper.
@@ -67,7 +71,7 @@ Key files:
 - `explainMapping.js` – Deterministic “explanation generator” for all mapping types (One To One, Map, Classes, Function).
 - `server.js` – Express app, routes, and CORS.
 - `test-*.js` – Local test scripts for DB connectivity and DAO behavior.
-- `docs/phoenix-field-mapping-explainer.md` – this document.
+- `docs/TECHNICAL_OVERVIEW.md` – this document.
 
 ### 3.1 Database Connectivity (`db.js`)
 
@@ -125,7 +129,6 @@ Responsibility: Map **RESO standardName** → **recordID** (and synonyms).
         }
         }
 
-
 Helpers:
 
 - `getLatestResoSpecRow()` – highest `fullversionstring`.
@@ -163,7 +166,6 @@ classNameLookup,    // map of class code -
         Residential)
         functionExplanation // optional LLM explanation for functions
         }) -> string
-
 
 Handles:
 
@@ -234,11 +236,17 @@ Endpoints:
 
 ## 4. Frontend Repo Overview (`phoenix-function-mapping-explainer`)
 
-The backend can be used by any front‑end. Today, a simple static HTML page is used:
+The backend can be used by any front‑end. There are two simple options:
+
+1. **Local HTML UI (in this repo)** – `db-field-mapping.html`
+   - Open directly: `file:///Users/<your-username>/phoenix-mapping-backend/phoenix-mapping-backend/db-field-mapping.html`
+   - Uses `http://localhost:3000` by default.
+
+2. **Separate frontend repo** – `phoenix-function-mapping-explainer`
 
 - Repo: `phoenix-function-mapping-explainer`
 - File: `db-field-mapping.html`
-- Path locally: `/Users/taylorap/code/phoenix-function-mapping-explainer/db-field-mapping.html`
+- Path locally: `/Users/<your-username>/code/phoenix-function-mapping-explainer/db-field-mapping.html`
 
 This page:
 
@@ -258,7 +266,7 @@ For local development:
 
 - Backend: `node server.js` at `http://localhost:3000`
 - Frontend: open  
-  `file:///Users/taylorap/code/phoenix-function-mapping-explainer/db-field-mapping.html`
+  `file:///Users/<your-username>/code/phoenix-function-mapping-explainer/db-field-mapping.html`
 - `API_BASE` is set to `http://localhost:3000`.
 
 For production:
@@ -269,7 +277,24 @@ For production:
 
 ---
 
-## 5. Deployment Notes
+## 5. Known Limitations and Data Freshness
+
+- **DB and VPN required**: The backend depends on the `field_mapping_tool` database and internal network access.
+- **Function explanations need OpenAI**: Without `OPENAI_API_KEY`, Function mappings fall back to a generic explanation.
+- **Latest published only**: The backend always selects the most recent **published** mapping row for an SSID.
+- **Latest RESO spec only**: The backend uses the highest `fullversionstring` from `resospec`.
+
+---
+
+## 6. Troubleshooting Quick Hits
+
+- `500` from API endpoints usually indicates DB connectivity or missing env vars.
+- `404` from `/api/explain` means no mapping exists for that SSID/resource/standardName.
+- If function explanations are missing, check `OPENAI_API_KEY`.
+
+---
+
+## 7. Deployment Notes
 
 - DB connections:
   - Use a **read‑only** role, ideally dedicated for this service.
@@ -284,11 +309,11 @@ For production:
 
 ---
 
-## 6. Cursor Usage
+## 8. Cursor Usage
 
 For future development with Cursor:
 
 - Open this repo in Cursor:
   - `cd /Users/taylorap/phoenix-mapping-backend/phoenix-mapping-backend`
   - `cursor .`
-- Refer to this document as `docs/phoenix-field-mapping-explainer.md` when asking Cursor questions or requesting changes.
+- Refer to this document as `docs/TECHNICAL_OVERVIEW.md` when asking Cursor questions or requesting changes.

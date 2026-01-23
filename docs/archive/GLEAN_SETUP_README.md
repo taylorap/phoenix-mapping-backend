@@ -108,7 +108,7 @@ functionExplainer.js
 explainMapping.js
 package.json
 package-lock.json
-docs/phoenix-field-mapping-explainer.md
+docs/TECHNICAL_OVERVIEW.md
 test-*.js files
 ```
 

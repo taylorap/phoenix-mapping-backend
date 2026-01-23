@@ -70,5 +70,5 @@ Assumptions and conventions -
 Docs -
 - `docs/LOCAL_SETUP_README.md` - local setup (quick + from scratch)
 - `docs/HOW_TO_USE_README.md` - how to use the backend and UI
-- `docs/phoenix-field-mapping-explainer.md` - system overview
+- `docs/TECHNICAL_OVERVIEW.md` - system overview
 - `docs/archive/` - previous setup drafts
