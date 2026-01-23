@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Phoenix Field Mapping (DB-backed) Explainer</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 900px; }
+    label { display: block; margin-top: 1rem; font-weight: 600; }
+    input, select {
+      width: 100%;
+      padding: 0.5rem;
+      margin-top: 0.25rem;
+      box-sizing: border-box;
+    }
+    button {
+      margin-top: 1rem;
+      padding: 0.6rem 1.2rem;
+      font-size: 1rem;
+    }
+    #result {
+      margin-top: 2rem;
+      white-space: pre-wrap;
+      border: 1px solid #ddd;
+      padding: 1rem;
+      border-radius: 4px;
+      background: #fafafa;
+    }
+    #status { margin-top: 0.5rem; font-size: 0.9rem; color: #555; }
+    .json-block {
+      margin-top: 1rem;
+      font-family: monospace;
+      font-size: 0.9rem;
+      white-space: pre;
+      background: #f3f3f3;
+      padding: 0.75rem;
+      border-radius: 4px;
+      overflow-x: auto;
+      max-height: 300px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Phoenix Field Mapping (DB-backed) Explainer</h1>
+  <p>
+    This version looks up the latest published mapping in the Phoenix mapping database.
+    Enter an SSID, choose a resource, and type a RESO standard field name.
+  </p>
+
+  <form id="explain-form">
+    <label for="ssid">SSID</label>
+    <input
+      id="ssid"
+      name="ssid"
+      type="number"
+      required
+      placeholder="e.g., 5632"
+    />
+
+    <label for="resource">Resource</label>
+    <select id="resource" name="resource" required>
+      <option value="">Select resource...</option>
+      <option value="property">Property</option>
+      <option value="member">Member</option>
+      <option value="office">Office</option>
+      <option value="openHouse">OpenHouse</option>
+      <option value="media">Media</option>
+      <option value="rooms">Rooms</option>
+      <!-- You can add more later based on /api/resources -->
+    </select>
+
+    <label for="standardName">RESO Standard Name</label>
+    <input
+      id="standardName"
+      name="standardName"
+      type="text"
+      required
+      placeholder="e.g., OnMarketTimestamp"
+    />
+
+    <button type="submit">Explain Mapping</button>
+    <div id="status"></div>
+  </form>
+
+  <div id="result" hidden>
+    <h2>Explanation</h2>
+    <p id="explanation-text"></p>
+
+    <h3>Details</h3>
+    <p><strong>Mapping type:</strong> <span id="mapping-type"></span></p>
+    <p><strong>MLS fields:</strong> <span id="mls-fields"></span></p>
+
+    <div>
+      <strong>Raw mapping JSON:</strong>
+      <div id="raw-mapping" class="json-block"></div>
+    </div>
+  </div>
+
+  <script>
+    // For local testing, use your local backend:
+    // const API_BASE = 'http://localhost:3000';
+    //
+    // For the deployed version, update this to your internal backend URL.
+    const API_BASE = 'http://localhost:3000';
+
+    const form = document.getElementById('explain-form');
+    const statusEl = document.getElementById('status');
+    const resultEl = document.getElementById('result');
+    const explanationEl = document.getElementById('explanation-text');
+    const mappingTypeEl = document.getElementById('mapping-type');
+    const mlsFieldsEl = document.getElementById('mls-fields');
+    const rawMappingEl = document.getElementById('raw-mapping');
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+
+      resultEl.hidden = true;
+      statusEl.textContent = 'Looking up mapping and generating explanation...';
+
+      const ssid = document.getElementById('ssid').value.trim();
+      const resource = document.getElementById('resource').value.trim();
+      const standardName = document.getElementById('standardName').value.trim();
+
+      if (!ssid || !resource || !standardName) {
+        statusEl.textContent = 'Please provide SSID, resource, and RESO standard name.';
+        return;
+      }
+
+      try {
+        const url = `${API_BASE}/api/explain?ssid=${encodeURIComponent(
+          ssid
+        )}&resource=${encodeURIComponent(
+          resource
+        )}&standardName=${encodeURIComponent(standardName)}`;
+
+        const response = await fetch(url);
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(text || 'Request failed');
+        }
+
+        const data = await response.json();
+
+        const rawExplanation = data.explanation || '(No explanation generated)';
+
+        // Turn newline characters into <br> so they render as separate lines
+        const explanationHtml = rawExplanation
+        .split('\n')
+        .map(line => line === '' ? '<br>' : line)
+        .join('<br>');
+
+        explanationEl.innerHTML = explanationHtml;
+
+        mappingTypeEl.textContent = data.mappingType || '(Unknown)';
+        mlsFieldsEl.textContent = Array.isArray(data.mlsFields) && data.mlsFields.length
+          ? data.mlsFields.join(', ')
+          : '(none)';
+
+        rawMappingEl.textContent = data.rawMapping
+          ? JSON.stringify(data.rawMapping, null, 2)
+          : '(no raw mapping returned)';
+
+        resultEl.hidden = false;
+        statusEl.textContent = '';
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = 'Error: ' + err.message;
+        resultEl.hidden = true;
+      }
+    });
+  </script>
+</body>
+</html>
