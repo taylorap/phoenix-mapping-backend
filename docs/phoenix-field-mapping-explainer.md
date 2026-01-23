@@ -1,419 +1,294 @@
-Phoenix Field Mapping (DB‑backed) Explainer – Technical Overview
+# Phoenix Field Mapping (DB‑backed) Explainer – Technical Overview
 
-1. Purpose
-The Phoenix Field Mapping (DB‑backed) Explainer is a small service + UI that:
-Lets users specify:
-SSID (Phoenix Metadata SSID, e.g. 5632 for “Bright MLS IDX”),
-Resource (e.g. property, member, office),
-RESO Standard Field Name (e.g. PurchaseContractDate, UnparsedAddress),
-Looks up the latest published mapping configuration for that SSID from the Phoenix field mapping database,
-Resolves the RESO field to its internal mapping entry (including mapping type, MLS fields, and function body),
-Returns a plain‑language explanation of how that field is populated:
-For all mapping types (One To One, Map, Classes, Function, etc.),
-With special handling for Classes and Function mappings.
-The audience is non‑technical MLS Support / Front‑end Support. They should be able to answer questions like:
-“For SSID 5632, Property → PurchaseContractDate, where does that value come from?”
-“Is UnparsedAddress built with a function or simply copied from one MLS field?”
-“How does PropertyType map the MLS’ ‘Multi‑Family’ into RESO?”
-without reading keyfiles or JavaScript.
+## 1. Purpose
 
-2. High‑level Architecture
-The system is deliberately two‑layered:
-Backend service (Node/Express; internal)
-Connects to the Phoenix Field Mapping Tool Postgres database (field_mapping_tool).
-Reads:
-The mapping table (published keyfiles),
-The resospec table (latest RESO spec).
-Exposes JSON APIs:
-/api/resources
-/api/fields
-/api/field
-/api/field-by-name
-/api/explain
-Uses OpenAI to generate function‑level explanations for complex mappings.
-Frontend page (static HTML+JS; currently local, Vercel‑ready)
-db-field-mapping.html
-Presents a simple form:
-SSID (number)
-Resource (dropdown)
-RESO Standard Name (text)
-Calls /api/explain on the backend and renders:
-Explanation text (with line breaks),
-Mapping type,
-MLS fields,
-Raw mapping JSON.
-Data flow
-User input: SSID + Resource + StandardName.
-Backend:
-Finds the latest published mapping row in mapping for that SSID.
-Uses resospec to map StandardName → recordID.
-Uses recordID to find the mapping entry for that field (mappingType, mlsFields, mapping).
-For Classes, also resolves class codes (e.g. RESI) to friendly names (e.g. “Residential”).
-For Function mappings, calls OpenAI with the JS function body.
-Builds a structured explanation string.
-Frontend:
-Receives JSON, converts \n to <br> for multi‑line display.
-Shows explanation + details to the user.
+The Phoenix Field Mapping (DB‑backed) Explainer is a small service + UI that helps MLS Operations and Support understand how individual RESO fields are populated for a given MLS feed (SSID) and resource.
 
-3. Backend: Project Structure
-Repo: phoenix-mapping-backend
-Location on Taylor’s machine:
-/Users/taylorap/phoenix-mapping-backend/phoenix-mapping-backend
+Given:
+
+- **SSID** (e.g., 5632 = Bright MLS IDX)
+- **Resource** (e.g., `property`, `member`, `office`)
+- **RESO Standard Field Name** (e.g., `PurchaseContractDate`, `UnparsedAddress`)
+
+the system:
+
+1. Looks up the latest **published** Phoenix mapping configuration for that SSID.
+2. Resolves the RESO field to its internal mapping definition (mapping type, MLS fields, and function body).
+3. Returns a **plain‑language explanation** of how the field is populated, suitable for non‑technical Support.
+
+This replaces manual inspection of keyfiles and JavaScript mappings with a quick, standardized explanation.
+
+---
+
+## 2. High‑Level Architecture
+
+The system has two main parts:
+
+1. **Backend (Node/Express, internal)** – repo: `phoenix-mapping-backend`
+   - Connects to the Phoenix field mapping Postgres database (`field_mapping_tool`).
+   - Reads:
+     - The `mapping` table (published keyfiles).
+     - The `resospec` table (latest RESO spec).
+   - Exposes HTTP APIs:
+     - `/api/health`
+     - `/api/resources`
+     - `/api/fields`
+     - `/api/field`
+     - `/api/field-by-name`
+     - `/api/explain`
+   - Uses OpenAI to explain JavaScript mapping functions.
+
+2. **Frontend (static HTML/JS)** – repo: `phoenix-function-mapping-explainer`
+   - Page: `db-field-mapping.html`
+   - Inputs:
+     - SSID
+     - Resource
+     - RESO standardName
+   - Calls the backend’s `/api/explain` endpoint.
+   - Renders:
+     - Explanation text (with line breaks),
+     - Mapping type,
+     - MLS fields,
+     - Raw mapping JSON.
+
+---
+
+## 3. Backend Repo Structure (`phoenix-mapping-backend`)
+
+Path on Taylor’s machine: /Users/taylorap/phoenix-mapping-backend/phoenix-mapping-backend
+
+
 Key files:
-db.js – Postgres connection pool + simple query helper.
-mappingDao.js – Data access for the mapping table and mapping JSON.
-resoSpecDao.js – Data access for the resospec table and RESO spec JSON.
-functionExplainer.js – OpenAI client + function explanation helper.
-explainMapping.js – Deterministic explanation builder for all mapping types.
-server.js – Express app; exposes the HTTP API.
-.env – Local config (DB URL, OpenAI API key). Not committed.
-3.1 DB connection (db.js)
-Uses pg’s Pool to manage connections:
-const { Pool } = require('pg');
 
-const pool = new Pool({
-  connectionString: process.env.MAPPING_DB_URL,
-  ssl: { rejectUnauthorized: false }, // required by RDS + local dev
-});
+- `db.js` – Postgres connection and query helper.
+- `mappingDao.js` – Access to the `mapping` table and mapping JSON.
+- `resoSpecDao.js` – Access to the `resospec` table / RESO spec JSON.
+- `functionExplainer.js` – OpenAI client; explains JS mapping functions with a detailed system prompt.
+- `explainMapping.js` – Deterministic “explanation generator” for all mapping types (One To One, Map, Classes, Function).
+- `server.js` – Express app, routes, and CORS.
+- `test-*.js` – Local test scripts for DB connectivity and DAO behavior.
+- `docs/phoenix-field-mapping-explainer.md` – this document.
 
-async function query(text, params) {
-  const result = await pool.query(text, params);
-  return result.rows;
-}
+### 3.1 Database Connectivity (`db.js`)
 
-module.exports = { query, pool };
-js
-MAPPING_DB_URL is a standard Postgres URI, e.g.:
-MAPPING_DB_URL=postgresql://mlsteam_ro:***@prod-phoenix-field-mapping-tool-s.c4fna3dvqcgk.us-west-2.rds.amazonaws.com:5432/field_mapping_tool
-env
-3.2 Mapping DAO (mappingDao.js)
-Responsible for:
-Finding the latest published mapping row for a given SSID.
-Extracting resources + field mappings from the mapping JSON.
-Latest published mapping for SSID
-SELECT *
-FROM mapping
-WHERE metadatassid = $1
-  AND mapping->>'datePublished' IS NOT NULL
-  AND mapping->>'datePublished' <> ''
-ORDER BY id DESC
-LIMIT 1;
-sql
-Code:
-async function getLatestPublishedMappingRow(ssid) {
-  const rows = await db.query(
-    `
-    SELECT *
-    FROM mapping
-    WHERE metadatassid = $1
-      AND mapping->>'datePublished' IS NOT NULL
-      AND mapping->>'datePublished' <> ''
-    ORDER BY id DESC
-    LIMIT 1;
-    `,
-    [ssid]
-  );
-  return rows[0] || null;
-}
-js
-Within that row, the JSON structure is (simplified):
-{
-  "datePublished": "...",
-  "mapping": {
-    "metadata": { ... },
-    "property": { ... },
-    "member": { ... },
-    ...
-  },
-  "metadataSsid": 5632,
-  ...
-}
-json
-DAO helpers:
-getResourcesForSsid(ssid)
-Returns the list of resource keys under mapping.mapping, e.g.:
+- Uses `pg`’s `Pool` with `MAPPING_DB_URL` from `.env`.
+- Connects to Aurora/RDS `field_mapping_tool` with a read‑only user.
+- SSL enabled (`rejectUnauthorized: false` for local dev; can be made stricter in prod).
 
-["customFields","mappingSettings","media","member","metadata","office","openHouse","property","rooms","unitTypes"]
+### 3.2 Mapping Data Access (`mappingDao.js`)
 
-js
-getFieldMappingsForResource(ssid, resourceName)
-Returns an array of simplified field mapping objects:
+Responsibility: Load and interpret the **published mapping** for an SSID.
 
-[
-  {
-    key: "100017",           // recordID / internal mapping key
-    mappingType: "Classes",  // One To One | Map | Classes | Function | ...
-    mlsFields: ["PurchaseContractDate"],
-    mapping: {...}           // inner structure; varies by mappingType
-  },
-  ...
-]
+- `getLatestPublishedMappingRow(ssid)`  
+  - Query against `mapping` table:
+    - `WHERE metadatassid = $1`
+    - `AND mapping->>'datePublished' IS NOT NULL AND <> ''`
+    - `ORDER BY id DESC LIMIT 1`
+  - Returns the latest **published** mapping row for the SSID.
 
-js
-getFieldMappingByKey(ssid, resourceName, fieldKey)
-Looks up a single mapping entry by its internal key.
-getFieldMappingByStandardName(ssid, resourceName, standardName)
-Uses resoSpecDao.getRecordIdForStandardName to map StandardName → recordID → mapping entry, then returns:
+- `getResourcesForSsid(ssid)`  
+  - Loads the row, then reads `row.mapping.mapping` keys to get resource names (property, member, office, etc.).
 
-{
-  recordID: "100017",
-  key: "100017",
-  mappingType: "Classes",
-  mlsFields: [],
-  mapping: {...}
-}
+- `getFieldMappingsForResource(ssid, resource)`  
+  - Returns an array of simplified mapping entries:
+    - `key` – internal mapping key / RESO recordID.
+    - `mappingType` – One To One, Map, Classes, Function, etc.
+    - `mlsFields` – array of MLS field names.
+    - `mapping` – type‑specific payload (string for Function, object for Map/Classes).
 
-js
-3.3 RESO Spec DAO (resoSpecDao.js)
-Responsible for:
-Resolving RESO standardName (or synonym) to recordID for a given resource, using the latest RESO spec.
-resospec table:
-fullversionstring – e.g. 2.0.9 (latest spec is highest version).
-resospec – JSON spec document.
-The spec JSON has:
-{
-  "resources": {
-    "property": [
-      {
-        "recordID": "100017",
-        "standardName": "PurchaseContractDate",
-        "synonyms": ["PendingDate", "DatePending", ...],
-        "dataType": "Date",
+- `getFieldMappingByKey(ssid, resource, key)`  
+  - Filters `getFieldMappingsForResource` by internal key.
+
+- `getFieldMappingByStandardName(ssid, resource, standardName)`  
+  - Uses `resoSpecDao.getRecordIdForStandardName(resource, standardName)` to resolve RESO recordID.
+  - Uses that recordID as the key into the mapping JSON and returns the corresponding entry.
+
+### 3.3 RESO Spec Access (`resoSpecDao.js`)
+
+Responsibility: Map **RESO standardName** → **recordID** (and synonyms).
+
+`resospec` table:
+
+- `fullversionstring` – version identifier (e.g., `2.0.9`).
+- `resospec` – JSON object with:
+
+        json
+        {
+        "resources": {
+        "property": [
+        { "recordID": "100017", "standardName": "PurchaseContractDate", "synonyms": [...], "dataType": "Date" },
         ...
-      },
-      ...
-    ],
-    "media": [ ... ],
-    "member": [ ... ],
-    ...
-  }
-}
-json
-DAO helpers:
-getLatestResoSpecRow()
-Returns the row with highest fullversionstring.
-getResoFieldsForResource(resourceName)
-Reads row.resospec.resources[resource] and normalizes:
+        ],
+        "media": [...],
+        "member": [...],
+        ...
+        }
+        }
 
-[
-  {
-    recordID: "100017",
-    standardName: "PurchaseContractDate",
-    synonyms: ["PendingDate", "DatePending", ...],
-    type: "Date"
-  },
-  ...
-]
 
-js
-getRecordIdForStandardName(resourceName, standardName)
-Case‑insensitive match against standardName and synonyms (string or array).
-3.4 Function explainer (functionExplainer.js)
-Encapsulates the OpenAI call that uses your Cursor agent system prompt to explain a JS function.
-Uses OPENAI_API_KEY from .env.
-SYSTEM_PROMPT is your full “Cursor Agent Prompt for MLS Mapping Function Explainer” text.
-Helper:
-async function explainFunctionWithLLM(fieldName, functionBody) {
-  const userMessage = `Field Name: ${fieldName}
+Helpers:
 
-Function:
-${functionBody}
-`;
+- `getLatestResoSpecRow()` – highest `fullversionstring`.
+- `getResoFieldsForResource(resource)` – returns normalized list of fields `{ recordID, standardName, synonyms, type }` for a resource.
+- `getRecordIdForStandardName(resource, standardName)` – case‑insensitive match against `standardName` and `synonyms`.
 
-  const completion = await openai.chat.completions.create({
-    model: 'gpt-4.1-mini',
-    messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: userMessage },
-    ],
-    temperature: 0.1,
-  });
+### 3.4 Function Explainer (`functionExplainer.js`)
 
-  return completion.choices?.[0]?.message?.content?.trim() || null;
-}
-js
-3.5 Explanation builder (explainMapping.js)
-This is the core “translation engine” that turns raw mapping info into plain English. It is deterministic (no LLM calls inside) and handles:
-One To One
-Map
-Classes
-Function
-Other mapping types (fallback)
+Encapsulates the OpenAI integration for explaining JS mapping functions.
+
+- Uses `OPENAI_API_KEY` from `.env`.
+- `SYSTEM_PROMPT` is the same prompt used in the original Phoenix Function Mapping Explainer agent (Cursor/Glean), which:
+  - Requires responses to start with “The function for the field [[RESO Field Name]]...”.
+  - Explains how the function uses specific MLS fields.
+  - Avoids low‑level JS details, targeting non‑technical support staff.
+
+Exposed helper:
+
+- `explainFunctionWithLLM(fieldName, functionBody)` → plain‑text explanation.
+
+### 3.5 Explanation Generator (`explainMapping.js`)
+
+Responsible for turning raw mapping info into readable English without calling LLMs.
+
 Signature:
+
+js
 buildExplanation({
-  standardName,
-  mappingType,
-  mlsFields,
-  mapping,
-  classNameLookup,    // code -> friendly class name
-  functionExplanation // optional LLM output for functions
-}) -> string
-js
-Key logic:
-One To One
-Explains that the value is copied directly from one or more MLS fields.
-Map
-Handles nested shapes like:
-
-{
-  "PropertyType": {
-    "Farm": "Farm",
-    "Multi-Family": "Residential Income",
-    ...
-  }
-}
-
-json
-Unwraps the inner table, and returns multi‑line text like:
-The value for PropertyType comes from the MLS field PropertyType, but specific raw MLS values are converted using a lookup table.
-Some example value mappings are:
-"Farm" → "Farm"
-"Multi-Family" → "Residential Income"
-...
-Function
-If functionExplanation is present (from OpenAI), returns it directly. Otherwise, falls back to a generic description.
-Classes
-If functionExplanation is present (meaning every class uses the same function body):
-Treats it as: “same function used across multiple classes”.
-Builds a union of all MLS fields used across classes.
-Returns:
- The mapping for UnparsedAddress uses the same function across multiple property classes: Business Opportunity, Commercial Lease, Commercial Sale, Farm, Land, Residential, Residential Income, Residential Lease.
-That function reads from these MLS fields: StreetDirPrefix, StreetDirSuffix, StreetName, StreetNumber, StreetSuffix, UnitNumber, StreetSuffixModifier to build the result.
-Function details:
-The function for the field UnparsedAddress…
-Else, if all classes share the same mappingType + mlsFields (non‑Function), collapses into “all classes handled the same way” summary.
-Else, lists per‑class behavior with one line per class, using classNameLookup to show “Residential (RESI)” rather than just RESI.
-3.6 Express server (server.js)
-Wires everything together and exposes the HTTP API.
-Uses dotenv, express, body-parser, cors.
-Key endpoints:
-GET /api/health
-Returns { ok: true }.
-GET /api/resources?ssid=5632
-Returns:
-
-{
-  "ssid": 5632,
-  "resources": ["property","member","office",...]
-}
-
-json
-GET /api/fields?ssid=5632&resource=property
-Returns all raw field mappings for the resource.
-GET /api/field?ssid=5632&resource=property&key=100017
-Returns mapping details for the internal key (mostly for debugging).
-GET /api/field-by-name?ssid=5632&resource=property&standardName=PurchaseContractDate
-Resolves RESO standardName → recordID → mapping entry.
-GET /api/explain?ssid=5632&resource=property&standardName=UnparsedAddress
-The main endpoint your UI uses. It:
-Calls getFieldMappingByStandardName.
-For Function, calls explainFunctionWithLLM.
-For Classes, if all inner mappings are Function with the same body, also calls explainFunctionWithLLM.
-Builds `classNameLookup` from:
-
-row.mapping.mapping.metadata.resources[resource].mappedMlsClasses
-// { "Business Opportunity": "BUSO", ... } -> invert to { BUSO: "Business Opportunity", ... }
-
-js
-Calls buildExplanation.
-Returns:
-
-{
-  "ssid": 5632,
-  "resource": "property",
-  "standardName": "UnparsedAddress",
-  "mappingType": "Classes",
-  "mlsFields": [],
-  "rawMapping": { ... },      // per-class mappingType + mlsFields + mapping
-  "classNames": { "RESI": "Residential", ... },
-  "explanation": "The mapping for UnparsedAddress ..."
-}
-
-json
-Server startup:
-const port = process.env.PORT || 3000;
-app.listen(port, () => {
-  console.log(`Backend listening on port ${port}`);
-});
+standardName,
+mappingType,
+mlsFields,
+mapping,
+classNameLookup,    // map of class code -
+    friendly name (e.g. RESI -
+        Residential)
+        functionExplanation // optional LLM explanation for functions
+        }) -> string
 
 
-4. Frontend: db-field-mapping.html
-Repo: phoenix-function-mapping-explainer
-File: /Users/taylorap/code/phoenix-function-mapping-explainer/db-field-mapping.html
-Purpose: a thin UI over /api/explain.
-4.1 Form
-Fields:
-SSID – numeric input (e.g. 5632).
-Resource – dropdown (property, member, office, media, rooms, …).
-RESO Standard Name – text input (e.g. PurchaseContractDate, UnparsedAddress).
-4.2 API base
-For local dev:
-const API_BASE = 'http://localhost:3000';
-js
-(For deployment, this should be changed to the HTTPS URL of the backend when it’s hosted inside Zillow infra.)
-4.3 Submit handler
-On submit:
-Validates inputs.
-Sends GET request:
+Handles:
 
-const url = `${API_BASE}/api/explain?ssid=${encodeURIComponent(
-  ssid
-)}&resource=${encodeURIComponent(
-  resource
-)}&standardName=${encodeURIComponent(standardName)}`;
+- **One To One**  
+  - “The value for X is copied directly from MLS field Y (or fields Y, Z).”
 
-js
-Parses JSON and renders:
-explanation
-Converts \n to <br> and uses innerHTML so line breaks show properly:
+- **Map**  
+  - Handles both:
+    - Flat maps: `{ "A": "Active", "P": "Pending" }`
+    - Nested maps: `{ "PropertyType": { "Farm": "Farm", "Multi-Family": "Residential Income", ... } }`
+  - Produces:
+    - A description that values are normalized via a lookup table.
+    - A list of example mappings (one per line).
 
-const rawExplanation = data.explanation || '(No explanation generated)';
-const explanationHtml = rawExplanation
-  .split('\n')
-  .map(line => line === '' ? '<br>' : line)
-  .join('<br>');
+- **Function**  
+  - If `functionExplanation` is present (from OpenAI), returns that verbatim.
+  - Otherwise, falls back to a high‑level description.
 
-explanationEl.innerHTML = explanationHtml;
+- **Classes**  
+  - If `functionExplanation` is present (indicates a shared function across classes, e.g. UnparsedAddress):
+    - Summarizes that the same function is used for all listed classes.
+    - Shows the union of MLS fields used by the function.
+    - Appends “Function details:” followed by the LLM explanation.
+  - Else, if all classes share the same mappingType + mlsFields:
+    - Collapses to a single description: “all classes are handled the same way.”
+  - Else:
+    - Lists each class on its own line, with friendly names:
+      - “Residential (RESI): One To One using the MLS field PurchaseContractDate;”
+      - etc.
 
-js
-mappingType – data.mappingType.
-mlsFields – data.mlsFields.join(', ').
-rawMapping – JSON.stringify with indentation.
-Because #explanation-text uses innerHTML and the container uses white-space: pre-wrap;, all the multi‑line behavior set up in buildExplanation shows nicely for Support.
+### 3.6 API Server (`server.js`)
 
-5. Hosting Plan (short‑term and long‑term)
-Short‑term (your current workflow)
-Backend: Run locally:
+`server.js` wires everything together using Express:
 
-cd ~/phoenix-mapping-backend/phoenix-mapping-backend
-node server.js  # http://localhost:3000
+- Loads env vars (`dotenv`).
+- Creates an Express app with:
+  - JSON body parsing.
+  - CORS enabled (open by default; can be restricted in production).
 
-bash
-Frontend: Open the HTML file directly:
+Endpoints:
 
-file:///Users/taylorap/code/phoenix-function-mapping-explainer/db-field-mapping.html
+- `GET /api/health`
+- `GET /api/resources?ssid=...`
+- `GET /api/fields?ssid=...&resource=...`
+- `GET /api/field?ssid=...&resource=...&key=...`
+- `GET /api/field-by-name?ssid=...&resource=...&standardName=...`
+- `GET /api/explain?ssid=...&resource=...&standardName=...`  
+  (the main endpoint used by the frontend)
 
-text
-or host locally with a static server (e.g. npx serve .) as long as API_BASE points to http://localhost:3000.
-This is perfect for your own use and demos.
-Long‑term (for others at Zillow)
-Backend: Deploy phoenix-mapping-backend as an internal Node/Express service on approved infra (ZGCP or k8s), with:
-Same db.js config,
-Same .env (MAPPING_DB_URL, OPENAI_API_KEY),
-HTTPS endpoint such as:
+`/api/explain` workflow:
 
-https://phoenix-mapping-backend.<internal-domain>.com
+1. Resolve StandardName → recordID via `resoSpecDao`.
+2. Get mapping entry via `mappingDao.getFieldMappingByStandardName`.
+3. If `mappingType === "Function"`:
+   - Call `explainFunctionWithLLM` with the function body.
+4. If `mappingType === "Classes"` and all inner entries are `"Function"` with identical bodies:
+   - Call `explainFunctionWithLLM` once with the shared function body.
+5. Build `classNameLookup` from `row.mapping.mapping.metadata.resources[resource].mappedMlsClasses`.
+6. Call `buildExplanation` with all the above.
+7. Return a JSON object with:
+   - `mappingType`
+   - `mlsFields`
+   - `rawMapping` (type‑specific JSON)
+   - `classNames` (for Classes)
+   - `explanation` (fully formatted string with line breaks).
 
-text
-CORS configured to allow the front‑end origin(s).
-Frontend: Leave your Vercel app as the hosting front‑end (or move it to internal static hosting if required), but change:
+---
 
-const API_BASE = 'https://phoenix-mapping-backend.<internal-domain>.com';
+## 4. Frontend Repo Overview (`phoenix-function-mapping-explainer`)
 
-js
-and redeploy. Then share:
+The backend can be used by any front‑end. Today, a simple static HTML page is used:
 
-https://phoenix-function-mapping-explainer.vercel.app/db-field-mapping.html
+- Repo: `phoenix-function-mapping-explainer`
+- File: `db-field-mapping.html`
+- Path locally: `/Users/taylorap/code/phoenix-function-mapping-explainer/db-field-mapping.html`
 
-text
-(or an internal equivalent) with Support/Ops.
+This page:
+
+- Shows a small form with:
+  - SSID
+  - Resource
+  - RESO Standard Name
+- On submit, calls:
+  - `GET {API_BASE}/api/explain?ssid=...&resource=...&standardName=...`
+- Renders:
+  - Explanation text, converting `\n` to `<br>` so multiline explanations render properly.
+  - Mapping type.
+  - MLS fields.
+  - Raw mapping JSON.
+
+For local development:
+
+- Backend: `node server.js` at `http://localhost:3000`
+- Frontend: open  
+  `file:///Users/taylorap/code/phoenix-function-mapping-explainer/db-field-mapping.html`
+- `API_BASE` is set to `http://localhost:3000`.
+
+For production:
+
+- Backend should be deployed on internal Zillow infra with an HTTPS URL.
+- `API_BASE` in `db-field-mapping.html` should be updated to that internal URL.
+- The HTML page can be hosted on Vercel or internal static hosting.
+
+---
+
+## 5. Deployment Notes
+
+- DB connections:
+  - Use a **read‑only** role, ideally dedicated for this service.
+  - Keep SSL enabled.
+- OpenAI:
+  - Use a **Zillow‑approved** OpenAI API key or proxied endpoint.
+- CORS:
+  - In production, restrict `origin` to known front‑end hosts.
+- Health and monitoring:
+  - Use `/api/health` for health checks.
+  - Wire request logging / metrics according to team standards.
+
+---
+
+## 6. Cursor Usage
+
+For future development with Cursor:
+
+- Open this repo in Cursor:
+  - `cd /Users/taylorap/phoenix-mapping-backend/phoenix-mapping-backend`
+  - `cursor .`
+- Refer to this document as `docs/phoenix-field-mapping-explainer.md` when asking Cursor questions or requesting changes.
