@@ -18,6 +18,8 @@
   },
   "homepage": "https://github.com/taylorap/phoenix-function-mapping-explainer#readme",
   "dependencies": {
-    "openai": "^6.16.0"
+    "dotenv": "^17.2.3",
+    "openai": "^6.16.0",
+    "pg": "^8.17.2"
   }
 }
