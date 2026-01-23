@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Phoenix Function Mapping Explainer</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 900px; }
+    label { display: block; margin-top: 1rem; font-weight: 600; }
+    input, textarea { width: 100%; padding: 0.5rem; margin-top: 0.25rem; box-sizing: border-box; }
+    textarea { min-height: 200px; font-family: monospace; }
+    button { margin-top: 1rem; padding: 0.6rem 1.2rem; font-size: 1rem; }
+    #result { margin-top: 2rem; white-space: pre-wrap; border: 1px solid #ddd; padding: 1rem; border-radius: 4px; background: #fafafa; }
+    #status { margin-top: 0.5rem; font-size: 0.9rem; color: #555; }
+  </style>
+</head>
+<body>
+  <h1>Phoenix Function Mapping Explainer</h1>
+  <p>Paste a RESO field name and its mapping function. The tool will explain the logic in simple terms for support.</p>
+
+  <form id="explain-form">
+    <label for="fieldName">RESO Field Name</label>
+    <input id="fieldName" name="fieldName" required placeholder="e.g., ParkingTotal, OnMarketTimestamp" />
+
+    <label for="mappingFunction">Mapping Function (JavaScript)</label>
+    <textarea id="mappingFunction" name="mappingFunction" required
+      placeholder="Paste the full JavaScript function here..."></textarea>
+
+    <button type="submit">Explain Function</button>
+    <div id="status"></div>
+  </form>
+
+  <div id="result" hidden></div>
+
+  <script>
+    const form = document.getElementById('explain-form');
+    const statusEl = document.getElementById('status');
+    const resultEl = document.getElementById('result');
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      resultEl.hidden = true;
+      statusEl.textContent = 'Generating explanation...';
+
+      const fieldName = document.getElementById('fieldName').value.trim();
+      const mappingFunction = document.getElementById('mappingFunction').value.trim();
+
+      try {
+        const response = await fetch('/api/explain', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fieldName, mappingFunction })
+        });
+
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(text || 'Request failed');
+        }
+
+        const data = await response.json();
+        resultEl.textContent = data.explanation || '(No explanation returned)';
+        resultEl.hidden = false;
+        statusEl.textContent = '';
+      } catch (err) {
+        statusEl.textContent = 'Error: ' + err.message;
+      }
+    });
+  </script>
+</body>
+</html>
