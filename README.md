@@ -65,3 +65,10 @@ Assumptions and conventions -
 - Placeholder dates like 1800-01-01 are treated as invalid
 - Regex checks are described semantically
 - Explanations prioritize clarity over literal code translation
+
+
+Docs -
+- `docs/LOCAL_SETUP_README.md` - local setup (quick + from scratch)
+- `docs/HOW_TO_USE_README.md` - how to use the backend and UI
+- `docs/phoenix-field-mapping-explainer.md` - system overview
+- `docs/archive/` - previous setup drafts

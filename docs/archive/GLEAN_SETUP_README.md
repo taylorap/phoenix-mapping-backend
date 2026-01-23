@@ -1,3 +1,4 @@
+NOTE: Archived setup draft. Use `../LOCAL_SETUP_README.md` for the current guide.
 
 # Phoenix Mapping Backend – Local Setup Guide
 

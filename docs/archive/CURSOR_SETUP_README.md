@@ -1,3 +1,5 @@
+NOTE: Archived setup draft. Use `../LOCAL_SETUP_README.md` for the current guide.
+
 # Phoenix Field Mapping Explainer
 # Local Setup Guide (From Scratch)
 
@@ -226,4 +228,3 @@ psql "postgres://USER:PASSWORD@HOST:PORT/field_mapping_tool"
 - Install Git: https://git-scm.com/downloads
 - Install Node: https://nodejs.org/en/download
 - Use PowerShell or Git Bash for commands
-
