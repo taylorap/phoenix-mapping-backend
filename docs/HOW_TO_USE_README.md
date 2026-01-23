@@ -10,9 +10,10 @@ It provides:
 
 ## Quick use (experienced users)
 
-1) Make sure the backend is running:
+1) Make sure the backend is running from the repo root:
 
 ```
+cd /Users/<your-username>/phoenix-mapping-backend/phoenix-mapping-backend
 node server.js
 ```
 
