@@ -1,4 +1,4 @@
-- Phoenix Function Mapping Explainer -
+Phoenix Function Mapping Explainer -
 
 A lightweight internal tool that translates Phoenix JavaScript mapping functions into plain-English explanations for support, QA, and non-engineering partners.
 
