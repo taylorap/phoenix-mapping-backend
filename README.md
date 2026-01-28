@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-The Phoenix Field Mapping (DB‑backed) Explainer is a small service + UI that helps MLS Operations and Support understand how individual RESO fields are populated for a given MLS feed (SSID) and resource.
+The Phoenix Field Mapping (DB‑backed) Explainer is a small service + UI that helps MLS Operations and Support understand how individual RESO fields are populated for a given MLS feed (SSID) and resource. It is a locally run web service (Node/Express + a simple HTML UI) that connects to the Phoenix Field Mapping Tool Postgres database to fetch the latest published mapping for an SSID and resolve a RESO standardName into its mapping details. It then returns a plain‑language explanation of how that field is populated, using deterministic rules for most mappings and OpenAI for function‑based mappings, so Support/Ops can understand field behavior without digging into keyfiles or JavaScript.
 
 Given:
 
