@@ -224,7 +224,7 @@ ${functionBody}
 `;
 
   const completion = await openai.chat.completions.create({
-    model: 'gpt-4.1-mini', // adjust if needed
+    model: 'gpt-4.1', // lower TPM limit
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: userMessage },
