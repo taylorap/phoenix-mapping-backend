@@ -1,3 +1,5 @@
+NOTE: Archived doc. The README now contains the technical overview.
+
 # Phoenix Field Mapping (DB‑backed) Explainer – Technical Overview
 
 ## 1. Purpose
@@ -71,7 +73,7 @@ Key files:
 - `explainMapping.js` – Deterministic “explanation generator” for all mapping types (One To One, Map, Classes, Function).
 - `server.js` – Express app, routes, and CORS.
 - `test-*.js` – Local test scripts for DB connectivity and DAO behavior.
-- `docs/TECHNICAL_OVERVIEW.md` – this document.
+- `README.md` – current overview.
 
 ### 3.1 Database Connectivity (`db.js`)
 
@@ -316,4 +318,12 @@ For future development with Cursor:
 - Open this repo in Cursor:
   - `cd /Users/taylorap/phoenix-mapping-backend/phoenix-mapping-backend`
   - `cursor .`
-- Refer to this document as `docs/TECHNICAL_OVERVIEW.md` when asking Cursor questions or requesting changes.
+- Refer to this document as `README.md` when asking Cursor questions or requesting changes.
+
+---
+
+Docs -
+- `docs/LOCAL_SETUP_README.md` - local setup (quick + from scratch)
+- `docs/HOW_TO_USE_README.md` - how to use the backend and UI
+- `docs/TECHNICAL_OVERVIEW.md` - system overview
+- `docs/archive/` - previous setup drafts

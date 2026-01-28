@@ -323,5 +323,4 @@ For future development with Cursor:
 Docs -
 - `docs/LOCAL_SETUP_README.md` - local setup (quick + from scratch)
 - `docs/HOW_TO_USE_README.md` - how to use the backend and UI
-- `docs/TECHNICAL_OVERVIEW.md` - system overview
 - `docs/archive/` - previous setup drafts
